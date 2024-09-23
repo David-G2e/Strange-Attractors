@@ -24,39 +24,73 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <iostream>
 #include <Threads/Thread.h>
 #include <Threads/TripleBuffer.h>
+#include <Threads/RingBuffer.h>
 #include <Math/Math.h>
 #include <Math/Constants.h>
 #include <Math/Random.h>
+#include <Geometry/OrthogonalTransformation.h>
 #include <GL/gl.h>
 #include <GL/GLGeometryVertex.h>
 #include <GL/GLVertexBuffer.h>
 #include <vector>
+#include <Vrui/Tool.h>
+#include <Vrui/GenericToolFactory.h>
+#include <Vrui/ToolManager.h>
 #include <Vrui/Vrui.h>
 #include <Vrui/Application.h>
 
-class Animation:public Vrui::Application
+class StrangeAttractors:public Vrui::Application
 	{
 	/* Embedded classes: */
 	private:
 	typedef GLGeometry::Vertex<void,0,GLubyte,4,void,float,3> ParticleVertex; // Type for Particles storing colors and positions
-	typedef std::vector<ParticleVertex*> ParticleVector; // Vector of particleVertex
+	typedef std::vector<ParticleVertex> ParticleList; // Vector of particleVertex
+	typedef std::vector<float> TimeList; // Vector of times
 	typedef GLVertexBuffer<ParticleVertex> VertexBuffer; // Type for OpenGL buffers holding mesh vertices
+	class SeedParticlesTool; // Forward declaration
+	typedef Vrui::GenericToolFactory<SeedParticlesTool> SeedParticlesToolFactory; // Tool class uses the generic factory class	
 	
 	/* Elements: */
 	private:
-	int particleSize; // number of Particles
-	Threads::TripleBuffer<ParticleVertex*> particleVertices;
-	const ParticleVertex* oldParticles; //array of particles from the last step
+	int initParticleSize; // number of Particles
+	float timeDecay; // lifespan of a Particle
+	struct ParticleTimeList{
+		ParticleList particleList;
+		TimeList timeList;
+	};
+	Threads::TripleBuffer<ParticleTimeList> particleVertices;
+	Threads::RingBuffer<ParticleVertex> inputParticles;
+	const ParticleList* oldParticleList; //pointer to array of particles from the last step
+	const TimeList* oldTimeList; //pointer to array of time from the last step
 	VertexBuffer vertexBuffer; // Buffer holding mesh vertices
-	Threads::Thread animationThread; // Thread object for the background animation thread
+	Threads::Thread strangeAttractorsThread; // Thread object for the background StrangeAttractors thread
+	
+	class SeedParticlesTool:public Vrui::Tool,public Vrui::Application::Tool<StrangeAttractors>// The custom tool class, derived from application tool class
+		{
+		friend class Vrui::GenericToolFactory<SeedParticlesTool>;
+		
+		/* Elements: */
+		private:
+		static SeedParticlesToolFactory* factory; // Pointer to the factory object for this class
+		
+		/* Constructors and destructors: */
+		public:
+		static void initClass(void); // Initializes the custom tool's factory class
+		SeedParticlesTool(const Vrui::ToolFactory* factory,const Vrui::ToolInputAssignment& inputAssignment);
+		
+		/* Methods: */
+		virtual const Vrui::ToolFactory* getFactory(void) const;
+		virtual void buttonCallback(int buttonSlotIndex,Vrui::InputDevice::ButtonCallbackData* cbData);
+		virtual void frame(void);
+		};
 	
 	/* Private methods: */
-	void updateMesh(ParticleVertex* pv); // Recalculates all ParticleVertex
-	void* animationThreadMethod(void); // Thread method for the background animation thread
+	void updateMesh(ParticleTimeList& thisParticleTimeList); // Recalculates all ParticleTimeList
+	void* strangeAttractorsThreadMethod(void); // Thread method for the background StrangeAttractors thread
 	/* Constructors and destructors: */
 	public:
-	Animation(int& argc,char**& argv);
-	virtual ~Animation(void);
+	StrangeAttractors(int& argc,char**& argv);
+	virtual ~StrangeAttractors(void);
 	
 	/* Methods from Vrui::Application: */
 	virtual void frame(void);
@@ -64,55 +98,72 @@ class Animation:public Vrui::Application
 	virtual void resetNavigation(void);
 	};
 
-/**************************
-Methods of class Animation:
-**************************/
+/**********************************
+Methods of class StrangeAttractors:
+**********************************/
 
-void Animation::updateMesh(Animation::ParticleVertex* pv)
+void StrangeAttractors::updateMesh(StrangeAttractors::ParticleTimeList& thisParticleTimeList)
 	{
 	/* Update the [x,y,z] coordinate of all Particles: */
-	ParticleVertex* pPtr=pv;
-	ParticleVertex* pvEnd=pv+particleSize;
-	const ParticleVertex* oldPtr = oldParticles;
-	//std::cout << pPtr;
-	//std::cout << " ";	
-	/* System parameters: */
+	thisParticleTimeList.particleList.clear();
+	thisParticleTimeList.timeList.clear();
 	float s = 10;
 	float r = 28;
 	float b = 2.667;
-	
-	for(ParticleVertex* pPtr=pv;pPtr!=pvEnd;++pPtr,++oldPtr)
+
+	TimeList::const_iterator oldTimeListIt = oldTimeList->begin();
+	ParticleList::const_iterator oldParticleListIt = oldParticleList->begin();
+	for(;oldParticleListIt!=oldParticleList->end();++oldParticleListIt,++oldTimeListIt)
 		{
-		/* initial x,y,z coordinates */
-		float x = oldPtr->position[0];
-		float y = oldPtr->position[1];
-		float z = oldPtr->position[2];
+		float tp = *oldTimeListIt;
+		if (tp>Vrui::getApplicationTime())
+			{
+			/* initial x,y,z coordinates */
+			ParticleVertex pv = *oldParticleListIt;
+			//std::cout<< pv.position[1] << std::endl;
+			float x = pv.position[0];
+			float y = pv.position[1];
+			float z = pv.position[2];
+			
+			/* change at each time step for the Lorenz attractor system: */
+			ParticleVertex::Position::Vector dot;
+			dot[0]=s*(y-x);
+			dot[1]=x*(r-z)-y;
+			dot[2]=(x*y)-(b*z);
+			float t = 0.003;
+			
+			/* updated color */
+			if (pv.color[1]>0)
+				{
+				pv.color[1] -= .1;
+				}
+			else if(pv.color[0]>0)
+				{
+				pv.color[0] -= .1;
+				}
+			else
+				{
+				pv.color[2] -= .1;
+				}
+			
+			/* updated positions: */
+			pv.position+= dot*t;
 		
-		/* change at each time step for the Lorenz attractor system: */
-		float x_dot = s*(y-x);
-		float y_dot = x*(r-z)-y;
-		float z_dot = (x*y)-(b*z);
-		float t = 0.003;
-		
-		/* updated positions: */
-		pPtr->position[0]= oldPtr->position[0] + t*x_dot;
-		//std::cout << x;
-		//std::cout << " ";
-		pPtr->position[1]= oldPtr->position[1] + t*y_dot;
-		pPtr->position[2]= oldPtr->position[2] + t*z_dot;
-		
-		/*updated color: */
-		pPtr->color[0]= oldPtr->color[0];
-		pPtr->color[1]= oldPtr->color[1];
-		pPtr->color[2]= oldPtr->color[2];
-		pPtr->color[3]= oldPtr->color[3];
+			thisParticleTimeList.particleList.push_back (pv);
+			thisParticleTimeList.timeList.push_back (tp);
+			}
 		}
-	
+	while(!inputParticles.empty())
+		{
+		thisParticleTimeList.particleList.push_back(inputParticles.read());
+		thisParticleTimeList.timeList.push_back(Vrui::getApplicationTime()+timeDecay);
+		}
 	//work from step for new iteration
-	oldParticles = pv;
+	oldParticleList = &thisParticleTimeList.particleList;
+	oldTimeList = &thisParticleTimeList.timeList;
 	}
 
-void* Animation::animationThreadMethod(void)
+void* StrangeAttractors::strangeAttractorsThreadMethod(void)
 	{
 	while(true)
 		{
@@ -120,94 +171,79 @@ void* Animation::animationThreadMethod(void)
 		usleep(1000000/60);
 		
 		/* Start a new value in the mesh triple buffer: */
-		ParticleVertex* pv=particleVertices.startNewValue();
-
-		/* Recalculate the mesh vertices in the new triple buffer slot: */
-		updateMesh(pv);
+		ParticleTimeList& thisParticleTimeList = particleVertices.startNewValue();
 		
+		/* Recalculate the mesh vertices in the new triple buffer slot: */
+		updateMesh(thisParticleTimeList);
+
 		/* Push the new triple buffer slot to the foreground thread: */
 		particleVertices.postNewValue();
 		
 		/* Wake up the foreground thread by requesting a Vrui frame immediately: */
 		Vrui::requestUpdate();
 		}
-	
 	return 0;
 	}
 
-Animation::Animation(int& argc,char**& argv)
-	:Vrui::Application(argc,argv)
+StrangeAttractors::StrangeAttractors(int& argc,char**& argv)
+	:Vrui::Application(argc,argv),
+	initParticleSize(100), 
+	inputParticles(100),
+	timeDecay(10)
 	{
-	/* Initialize the number of Particles: */
-	particleSize=3;
-
-	for(int i=0;i<3;++i)
-		{
-		/* Access the i-th triple buffer slot: */
-		ParticleVertex*& pv=particleVertices.getBuffer(i);
-
-		/* Allocate the in-memory vertex array: */
-		pv=new ParticleVertex[particleSize];
-		}
+	SeedParticlesTool::initClass();
 	
-	ParticleVector particles[particleSize];
-	/*
-	for (int i=0; i < sizeof(particles) / 24; i++)
-		{
-		std::cout << **(particles+i) << ' ';
-		}
-		*/
-
-		
-	std::cout << "\n";
-	ParticleVertex* pv= particleVertices.startNewValue();
-	oldParticles = pv;
-	ParticleVertex* pvEnd=pv+particleSize;
-	for(ParticleVertex* pPtr=pv;pPtr!=pvEnd;++pPtr)
+	ParticleTimeList& thisParticleTimeList = particleVertices.startNewValue();
+	for(int i = 0; i< initParticleSize ;++i)
 		{
 		/* Initialize the random position of Particles: */
-		pPtr->position[0]=Math::randUniformCO(-20.0f,20.0f);
-		pPtr->position[1]=Math::randUniformCO(-20.0f,20.0f);
-		pPtr->position[2]=Math::randUniformCO(-20.0f,20.0f);
+		ParticleVertex pv;
+		
+		pv.position[0]=Math::randUniformCO(-20.0f,20.0f);
+		pv.position[1]=Math::randUniformCO(-20.0f,20.0f);
+		pv.position[2]=Math::randUniformCO(-20.0f,20.0f);
 		
 		/* Initialize the random color of Particles: */
-		pPtr->color[0]=Math::randUniformCO(32,256);
-		pPtr->color[1]=Math::randUniformCO(32,256);
-		pPtr->color[2]=Math::randUniformCO(32,256);
-		pPtr->color[3]=255;
+		pv.color[0]=Math::randUniformCO(64,256);
+		pv.color[1]=Math::randUniformCO(64,256);
+		pv.color[2]=Math::randUniformCO(64,256);
+		pv.color[3]=255;
+		
+		thisParticleTimeList.particleList.push_back(pv);
+		
+		/* Initialize the time of Particles: */
+		thisParticleTimeList.timeList.push_back(Vrui::getApplicationTime()+timeDecay);
 		}
-
+	oldParticleList = &thisParticleTimeList.particleList;
+	oldTimeList = &thisParticleTimeList.timeList;
 	
 	/* Calculate the first full mesh state in a new triple buffer slot: */
 	particleVertices.postNewValue();
 	
-	/* Start the background animation thread: */
-	animationThread.start(this,&Animation::animationThreadMethod);
+	/* Start the background StrangeAttractors thread: */
+	strangeAttractorsThread.start(this,&StrangeAttractors::strangeAttractorsThreadMethod);
 	}
 
-Animation::~Animation(void)
+StrangeAttractors::~StrangeAttractors(void)
 	{
-	/* Shut down the background animation thread: */
-	animationThread.cancel();
-	animationThread.join();
-	
-	/* Delete the in-memory vertex arrays in all three triple buffer slots: */
-	for(int i=0;i<3;++i)
-		delete[] particleVertices.getBuffer(i);
+	/* Shut down the background StrangeAttractors thread: */
+	strangeAttractorsThread.cancel();
+	strangeAttractorsThread.join();
 	}
 
-	
-void Animation::frame(void)
+void StrangeAttractors::frame(void)
 	{
 	/* Check if there is a new entry in the triple buffer and lock it: */
 	if(particleVertices.lockNewValue())
 		{
+		const ParticleTimeList& thisParticleList=particleVertices.getLockedValue();
+				
 		/* Point the vertex buffer to the new mesh vertices: */
-		vertexBuffer.setSource(particleSize,particleVertices.getLockedValue());
+		vertexBuffer.setSource(thisParticleList.particleList.size(),thisParticleList.particleList.data());
 		}
 	}
 
-void Animation::display(GLContextData& contextData) const
+void StrangeAttractors::display(GLContextData& contextData) const
 	{
 	/* Save OpenGL state: */
 	glPushAttrib(GL_ENABLE_BIT|GL_POINT_BIT);
@@ -227,10 +263,71 @@ void Animation::display(GLContextData& contextData) const
 	glPopAttrib();
 	}
 
-void Animation::resetNavigation(void)
+void StrangeAttractors::resetNavigation(void)
 	{
 	/* Center and scale the object: */
 	Vrui::setNavigationTransformation(Vrui::Point::origin,150.0);
 	}
 
-VRUI_APPLICATION_RUN(Animation)
+/********************************************************************
+Static elements of class StrangeAttractors::SeedParticlesToolFactory:
+********************************************************************/
+
+StrangeAttractors::SeedParticlesToolFactory* StrangeAttractors::SeedParticlesTool::factory=0;
+
+void StrangeAttractors::SeedParticlesTool::initClass(void)
+	{
+	/* Create a factory object for the custom tool class: */
+	factory=new SeedParticlesToolFactory("SeedParticlesTool","Seed Particles",0,*Vrui::getToolManager());
+	
+	/* Set the custom tool class' input layout: */
+	factory->setNumButtons(1);
+	factory->setButtonFunction(0,"Seed Particles");
+	
+	/* Register the custom tool class with Vrui's tool manager: */
+	Vrui::getToolManager()->addClass(factory,Vrui::ToolManager::defaultToolFactoryDestructor);
+	}
+
+StrangeAttractors::SeedParticlesTool::SeedParticlesTool(const Vrui::ToolFactory* factory,const Vrui::ToolInputAssignment& inputAssignment)
+	:Vrui::Tool(factory,inputAssignment)
+	{
+	}
+
+const Vrui::ToolFactory* StrangeAttractors::SeedParticlesTool::getFactory(void) const
+	{
+	return factory;
+	}
+
+void StrangeAttractors::SeedParticlesTool::buttonCallback(int buttonSlotIndex,Vrui::InputDevice::ButtonCallbackData* cbData)
+	{
+	if(cbData->newButtonState) // Button has just been pressed
+		{
+		std::cout<<"MyTool: Button "<<buttonSlotIndex<<" has just been pressed"<<std::endl;
+		}
+	else // Button has just been released
+		{
+		std::cout<<"MyTool: Button "<<buttonSlotIndex<<" has just been released"<<std::endl;
+		}
+	}
+void StrangeAttractors::SeedParticlesTool::frame(void)
+	{
+		if(getButtonState(0))
+		{
+			ParticleVertex pv;
+			pv.position = Vrui::getNavigationTransformation().inverseTransform(getButtonDevicePosition(0));
+			
+			pv.position[0]+=Math::randUniformCO(-3.0f,3.0f);
+			pv.position[1]+=Math::randUniformCO(-3.0f,3.0f);
+			pv.position[2]+=Math::randUniformCO(-3.0f,3.0f);
+			
+			pv.color[0]=Math::randUniformCO(32,256);
+			pv.color[1]=Math::randUniformCO(32,256);
+			pv.color[2]=Math::randUniformCO(32,256);
+			pv.color[3]=255;
+			
+			application->inputParticles.write(pv);
+			Vrui::scheduleUpdate(Vrui::getNextAnimationTime());
+		}
+	}
+	
+VRUI_APPLICATION_RUN(StrangeAttractors)
