@@ -14,11 +14,10 @@ StrangeAttractors.cpp is the most up-to-date file. The other files show progress
 I could not have done this work without my mentor Oliver Kreylos along with his VRUI-12.0-001 toolkit. 
 
 **Installation**
-Please download the VRUI-12.0-001 toolkit by typing this in the terminal:
-  wget -O - http://vroom.library.ucdavis.edu/Software/Vrui/Vrui-12.0-001.tar.gz | tar xfz
-Download the StrangeAttractors.cpp file and the makefile.
-This function in the terminal should download all the files needed for the files within *insert folder name here* :
-  make PACKAGES=VRUIALL *insert folder name here*
-Lastly, this command should compile and run the StrangeAttractors file:
+ - Please download the VRUI-12.0-001 toolkit by typing this in the terminal: wget -O - http://vroom.library.ucdavis.edu/Software/Vrui/Vrui-12.0-001.tar.gz | tar xfz
+ - Download the StrangeAttractors.cpp file and the makefile.
+This function in the terminal should download all the files needed for the files within *insert folder name here*
+make PACKAGES=VRUIALL *insert folder name here*
+ - Lastly, this command should compile and run the StrangeAttractors file:
   make StrangeAttractors && ./bin/StrangeAttractors
 
