@@ -1,5 +1,5 @@
 /***********************************************************************
-StrangeAttractors1 - Program modeling the Lorentz Attractor with 1000 particles.
+StrangeAttractorsArray - Program modeling the Lorentz Attractor with 1000 particles.
 Data is exchanged between a background animation thread and the foreground 
 rendering thread using a triple buffer, and retained-mode OpenGL rendering
 using vertex and index buffers. Data is stored as a vector and accessed 
