@@ -1,14 +1,9 @@
 /***********************************************************************
-Animation - Example program demonstrating data exchange between a
+StrangeAttractors - Program modeling the Lorentz Attractor with birth/death
+rate, as well as the option to add particles. Data is exchanged between a
 background animation thread and the foreground rendering thread using
 a triple buffer, and retained-mode OpenGL rendering using vertex and
-index buffers.
-Copyright (c) 2014-2021 Oliver Kreylos
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 2 of the License, or (at your
-option) any later version.
+index buffers. A ring buffer is utilized to add particles. 
 
 This program is distributed in the hope that it will be useful, but
 WITHOUT ANY WARRANTY; without even the implied warranty of
