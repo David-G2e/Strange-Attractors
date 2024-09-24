@@ -1,9 +1,12 @@
 /***********************************************************************
-StrangeAttractors - Program modeling the Lorentz Attractor with birth/death
-rate, as well as the option to add particles. Data is exchanged between a
-background animation thread and the foreground rendering thread using
-a triple buffer, and retained-mode OpenGL rendering using vertex and
-index buffers. A ring buffer is utilized to add particles. 
+StrangeAttractors - Program modeling the Lorentz Attractor with 1000 particles.
+Data is exchanged between a background animation thread and the foreground 
+rendering thread using a triple buffer, and retained-mode OpenGL rendering
+using vertex and index buffers. Data is stored as a vector and accessed 
+using pointers. Input is registered using tools from VRUI-12.0-001. Particles
+are added in a stream-like fashion in succession. A ring buffer is used to 
+seed particles. Particles have a birth/death rate and fade away as time
+progresses. This version is the most up-to-date. 
 
 Last Modified: 9/24/24
 ***********************************************************************/
