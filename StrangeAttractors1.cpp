@@ -4,7 +4,7 @@ Data is exchanged between a background animation thread and the foreground
 rendering thread using a triple buffer, and retained-mode OpenGL rendering
 using vertex and index buffers. Data is stored and accessed using pointers. 
 
-Last Modified: 8/24/24
+Last Modified: 8/20/24
 ***********************************************************************/
 
 #include <unistd.h>
